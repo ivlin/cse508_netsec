@@ -1,0 +1,119 @@
+I implemented mydump.go on top of the gopacket and gopacket/pcap go libraries.
+
+In order to build and run, it may be necessary to go get these modules, as well as libpcap-dev.
+
+Gopacket conveniently provided much of the functionality needed. I supplemented it using the built in net package for working with the machine's network interfaces. I also used flag for argument parsing, as well as fmt and strings for I/O and parsing.
+
+The usage is as follows
+
+Compile with "go build mydump.go" or "make"
+
+Run using ./mydump executable.
+
+Usage of ./mydump:
+  -i string
+    	Live capture from the network device <interface>.
+  -r string
+    	Read packets from <file> in tcpdump format.
+  -s string
+    	Keep only packets that contain <string> in their payload (after any BPF filter is applied).
+
+./mydump [-i INTERFACE] [-r PCAP_FILE] [-s KEY] [BPF]
+
+If -i is not set, it will use the first encountered interface on net.Interfaces(). Otherwise, it will use the specified interface.
+If -r is not set, it will default to live capture. If it is set, it will read from a pcap file and ignore the -i flag.
+If -s is not set, it will consider all packets. If it is set, it will look through the packet payload for an occurence of a key string and only display those with an exact match. Note that this can be complicated due to encryption.
+If a BPF filter is not applied, it will consider all packets. Otherwise, it uses a convenient feature SetBPFFilter on the open interface/pcap stream to filter according to the specified filter.
+
+In addition to listening on the interfaces and storing data about each packet, Gopacket provides convenience functions like LayerDump to print the contents of a layer, including a hex formatted version of the payload, similar to tcpdump. I iterate through each layer of the packet and print the headers and the contents using gopacket.LayerDump(). This uses the default formatting, but the data can be parsed and printed in a different format if needed.
+
+sudo access is needed to live-listen on most interfaces.
+
+Sample Output:
+
+Prints all packets from the test.pcap file containing an "@" somewhere in the packet payload. Note that this looks at the entire packet payload and may include metadata as well, not just the transport or application level payload. This could be easily fixed in the code by specifically checking is the key string occurs in packet.TransportLayer().Layer.Payload() rather than packet.Payload().
+
+./mydump -r test.pcap -s @ tcp
+
+2021-03-02 23:38:50.121606000 Ethernet	{Contents=[..14..] Payload=[..100..] SrcMAC=08:00:27:cc:76:b7 DstMAC=52:54:00:12:35:02 EthernetType=IPv4 Length=0}
+00000000  52 54 00 12 35 02 08 00  27 cc 76 b7 08 00        |RT..5...'.v...|
+IPv4	{Contents=[..20..] Payload=[..80..] Version=4 IHL=5 TOS=8 Length=100 Id=43042 Flags=DF FragOffset=0 TTL=64 Protocol=TCP Checksum=31321 SrcIP=10.0.2.15 DstIP=10.0.2.2 Options=[] Padding=[]}
+00000000  45 08 00 64 a8 22 40 00  40 06 7a 59 0a 00 02 0f  |E..d."@.@.zY....|
+00000010  0a 00 02 02                                       |....|
+TCP	{Contents=[..20..] Payload=[..60..] SrcPort=22(ssh) DstPort=51539 Seq=2927527518 Ack=3399231 DataOffset=5 FIN=false SYN=false RST=false PSH=true ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=6247 Urgent=0 Options=[] Padding=[]}
+00000000  00 16 c9 53 ae 7e 86 5e  00 33 de 3f 50 18 ff ff  |...S.~.^.3.?P...|
+00000010  18 67 00 00                                       |.g..|
+Payload	60 byte(s)
+00000000  b0 38 7f 4c d2 32 42 62  57 b8 cf 1e 04 19 c0 35  |.8.L.2BbW......5|
+00000010  b9 92 da c2 15 a5 60 58  47 70 5d 31 14 ab 02 34  |......`XGp]1...4|
+00000020  21 eb 71 a3 ef f5 bc 32  98 13 04 3a db 75 55 42  |!.q....2...:.uUB|
+00000030  56 0d 3b a4 9f 29 b7 69  0c c8 e1 d2              |V.;..).i....|
+
+2021-03-02 23:38:50.121781000 Ethernet	{Contents=[..14..] Payload=[..46..] SrcMAC=52:54:00:12:35:02 DstMAC=08:00:27:cc:76:b7 EthernetType=IPv4 Length=0}
+00000000  08 00 27 cc 76 b7 52 54  00 12 35 02 08 00        |..'.v.RT..5...|
+IPv4	{Contents=[..20..] Payload=[..20..] Version=4 IHL=5 TOS=0 Length=40 Id=47097 Flags= FragOffset=0 TTL=64 Protocol=TCP Checksum=43718 SrcIP=10.0.2.2 DstIP=10.0.2.15 Options=[] Padding=[]}
+00000000  45 00 00 28 b7 f9 00 00  40 06 aa c6 0a 00 02 02  |E..(....@.......|
+00000010  0a 00 02 0f                                       |....|
+TCP	{Contents=[..20..] Payload=[] SrcPort=51539 DstPort=22(ssh) Seq=3399231 Ack=2927527578 DataOffset=5 FIN=false SYN=false RST=false PSH=false ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=47822 Urgent=0 Options=[] Padding=[]}
+00000000  c9 53 00 16 00 33 de 3f  ae 7e 86 9a 50 10 ff ff  |.S...3.?.~..P...|
+00000010  ba ce 00 00                                       |....|
+
+2021-03-02 23:38:51.768769000 Ethernet	{Contents=[..14..] Payload=[..100..] SrcMAC=52:54:00:12:35:02 DstMAC=08:00:27:cc:76:b7 EthernetType=IPv4 Length=0}
+00000000  08 00 27 cc 76 b7 52 54  00 12 35 02 08 00        |..'.v.RT..5...|
+IPv4	{Contents=[..20..] Payload=[..80..] Version=4 IHL=5 TOS=0 Length=100 Id=47098 Flags= FragOffset=0 TTL=64 Protocol=TCP Checksum=43657 SrcIP=10.0.2.2 DstIP=10.0.2.15 Options=[] Padding=[]}
+00000000  45 00 00 64 b7 fa 00 00  40 06 aa 89 0a 00 02 02  |E..d....@.......|
+00000010  0a 00 02 0f                                       |....|
+TCP	{Contents=[..20..] Payload=[..60..] SrcPort=51539 DstPort=22(ssh) Seq=3399231 Ack=2927527578 DataOffset=5 FIN=false SYN=false RST=false PSH=true ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=3691 Urgent=0 Options=[] Padding=[]}
+00000000  c9 53 00 16 00 33 de 3f  ae 7e 86 9a 50 18 ff ff  |.S...3.?.~..P...|
+00000010  0e 6b 00 00                                       |.k..|
+Payload	60 byte(s)
+00000000  8f 86 b9 54 be ad 79 02  52 8a bc 65 90 f7 dc 83  |...T..y.R..e....|
+00000010  66 10 b2 e9 04 8c be 88  d4 10 e2 5e 1e 41 8f 4b  |f..........^.A.K|
+00000020  cf a8 6f 2d cc e4 32 b4  22 2b 4b 48 be 10 50 4c  |..o-..2."+KH..PL|
+00000030  a5 df a7 9a 9b c7 be ad  02 4b 0a a3              |.........K..|
+
+2021-03-02 23:38:51.774887000 Ethernet	{Contents=[..14..] Payload=[..100..] SrcMAC=08:00:27:cc:76:b7 DstMAC=52:54:00:12:35:02 EthernetType=IPv4 Length=0}
+00000000  52 54 00 12 35 02 08 00  27 cc 76 b7 08 00        |RT..5...'.v...|
+IPv4	{Contents=[..20..] Payload=[..80..] Version=4 IHL=5 TOS=8 Length=100 Id=43043 Flags=DF FragOffset=0 TTL=64 Protocol=TCP Checksum=31320 SrcIP=10.0.2.15 DstIP=10.0.2.2 Options=[] Padding=[]}
+00000000  45 08 00 64 a8 23 40 00  40 06 7a 58 0a 00 02 0f  |E..d.#@.@.zX....|
+00000010  0a 00 02 02                                       |....|
+TCP	{Contents=[..20..] Payload=[..60..] SrcPort=22(ssh) DstPort=51539 Seq=2927527578 Ack=3399291 DataOffset=5 FIN=false SYN=false RST=false PSH=true ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=6247 Urgent=0 Options=[] Padding=[]}
+00000000  00 16 c9 53 ae 7e 86 9a  00 33 de 7b 50 18 ff ff  |...S.~...3.{P...|
+00000010  18 67 00 00                                       |.g..|
+Payload	60 byte(s)
+00000000  f6 d5 b5 98 53 1e 7a da  47 20 90 d2 12 97 25 9f  |....S.z.G ....%!|(MISSING)
+00000010  08 95 b4 2a 22 0f 6b 73  81 dd 18 ac 5d d7 75 e5  |...*".ks....].u.|
+00000020  e0 db 6c 8d 73 20 af 89  7d bc 2a 9e e0 5a fb 53  |..l.s ..}.*..Z.S|
+00000030  88 3b 84 94 28 54 c2 9c  3e f0 92 9c              |.;..(T..>...|
+
+2021-03-02 23:38:51.775179000 Ethernet	{Contents=[..14..] Payload=[..46..] SrcMAC=52:54:00:12:35:02 DstMAC=08:00:27:cc:76:b7 EthernetType=IPv4 Length=0}
+00000000  08 00 27 cc 76 b7 52 54  00 12 35 02 08 00        |..'.v.RT..5...|
+IPv4	{Contents=[..20..] Payload=[..20..] Version=4 IHL=5 TOS=0 Length=40 Id=47099 Flags= FragOffset=0 TTL=64 Protocol=TCP Checksum=43716 SrcIP=10.0.2.2 DstIP=10.0.2.15 Options=[] Padding=[]}
+00000000  45 00 00 28 b7 fb 00 00  40 06 aa c4 0a 00 02 02  |E..(....@.......|
+00000010  0a 00 02 0f                                       |....|
+TCP	{Contents=[..20..] Payload=[] SrcPort=51539 DstPort=22(ssh) Seq=3399291 Ack=2927527638 DataOffset=5 FIN=false SYN=false RST=false PSH=false ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=47702 Urgent=0 Options=[] Padding=[]}
+00000000  c9 53 00 16 00 33 de 7b  ae 7e 86 d6 50 10 ff ff  |.S...3.{.~..P...|
+00000010  ba 56 00 00                                       |.V..|
+
+2021-03-02 23:38:51.954979000 Ethernet	{Contents=[..14..] Payload=[..92..] SrcMAC=52:54:00:12:35:02 DstMAC=08:00:27:cc:76:b7 EthernetType=IPv4 Length=0}
+00000000  08 00 27 cc 76 b7 52 54  00 12 35 02 08 00        |..'.v.RT..5...|
+IPv4	{Contents=[..20..] Payload=[..72..] Version=4 IHL=5 TOS=0 Length=92 Id=47100 Flags= FragOffset=0 TTL=64 Protocol=TCP Checksum=43663 SrcIP=10.0.2.2 DstIP=10.0.2.15 Options=[] Padding=[]}
+00000000  45 00 00 5c b7 fc 00 00  40 06 aa 8f 0a 00 02 02  |E..\....@.......|
+00000010  0a 00 02 0f                                       |....|
+TCP	{Contents=[..20..] Payload=[..52..] SrcPort=51539 DstPort=22(ssh) Seq=3399291 Ack=2927527638 DataOffset=5 FIN=false SYN=false RST=false PSH=true ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=38982 Urgent=0 Options=[] Padding=[]}
+00000000  c9 53 00 16 00 33 de 7b  ae 7e 86 d6 50 18 ff ff  |.S...3.{.~..P...|
+00000010  98 46 00 00                                       |.F..|
+Payload	52 byte(s)
+00000000  55 ca b9 26 a7 de ae 29  aa 11 47 c6 73 b4 0b 20  |U..&...)..G.s.. |
+00000010  89 0d aa 66 08 a0 b9 dd  ec 11 19 c3 4d 07 0c 38  |...f........M..8|
+00000020  ce ad 75 17 89 59 10 a5  59 00 7f 3a cc 97 ca b4  |..u..Y..Y..:....|
+00000030  b5 87 f4 54                                       |...T|
+
+2021-03-02 23:38:52.3040000 Ethernet	{Contents=[..14..] Payload=[..40..] SrcMAC=08:00:27:cc:76:b7 DstMAC=52:54:00:12:35:02 EthernetType=IPv4 Length=0}
+00000000  52 54 00 12 35 02 08 00  27 cc 76 b7 08 00        |RT..5...'.v...|
+IPv4	{Contents=[..20..] Payload=[..20..] Version=4 IHL=5 TOS=8 Length=40 Id=43044 Flags=DF FragOffset=0 TTL=64 Protocol=TCP Checksum=31379 SrcIP=10.0.2.15 DstIP=10.0.2.2 Options=[] Padding=[]}
+00000000  45 08 00 28 a8 24 40 00  40 06 7a 93 0a 00 02 0f  |E..(.$@.@.z.....|
+00000010  0a 00 02 02                                       |....|
+TCP	{Contents=[..20..] Payload=[] SrcPort=22(ssh) DstPort=51539 Seq=2927527638 Ack=3399343 DataOffset=5 FIN=false SYN=false RST=false PSH=false ACK=true URG=false ECE=false CWR=false NS=false Window=65535 Checksum=6187 Urgent=0 Options=[] Padding=[]}
+00000000  00 16 c9 53 ae 7e 86 d6  00 33 de af 50 10 ff ff  |...S.~...3..P...|
+00000010  18 2b 00 00                                       |.+..|
