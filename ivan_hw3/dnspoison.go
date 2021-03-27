@@ -87,26 +87,19 @@ func handlePacket(packet gopacket.Packet, handle *pcap.Handle) {
 				},
 				&dns,
 			)
-			// if err := dns.SerializeTo(buf, ops); err != nil {
-			// 	fmt.Println("ERR")
-			// 	fmt.Println(err)
-			// }
+			
 			fmt.Println(udp.SrcPort)
 			fmt.Println(udp.DstPort)
-			// fmt.Println("DNS +=============")
 			fmt.Println(buf)
-			fmt.Println("BUF +=============")
-			// fmt.Println(packet.Dump())
-			// fmt.Println("PKT DONE +=============")
-			// fmt.Println(dns)
+
 			if err := handle.WritePacketData(packet.Data()); err != nil {
-				fmt.Println("!ERR")
+				fmt.Println("Error transmitting packet")
 				fmt.Println(err)
 			}
 		} else {
 			fmt.Println("Response to", string(dnsdata.Questions[0].Name))
-			fmt.Println(dnsdata)
-			fmt.Println(packet)
+			// fmt.Println(dnsdata)
+			// fmt.Println(packet)
 		}
 	}
 }
